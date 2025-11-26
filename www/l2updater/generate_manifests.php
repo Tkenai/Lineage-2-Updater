@@ -4,7 +4,7 @@
  * com base no conteúdo da pasta client/.
  *
  * Uso (linha de comando):
- *   php generate_manifests.php --base-url="http://192.168.15.57:8080/l2updater/client/"
+ *   php generate_manifests.php --base-url="http://192.168.15.57:8080/l2updater/client"
  */
 
 ini_set('display_errors', 1);
@@ -13,7 +13,7 @@ error_reporting(E_ALL);
 // -------------------- PARÂMETROS --------------------
 
 // base_url padrão (pode sobrescrever via --base-url=)
-$baseUrl = "http://192.168.15.57:8080/l2updater/client/";
+$baseUrl = "http://192.168.15.57:8080/l2updater/client";
 
 // lê argumentos da linha de comando
 foreach ($argv as $arg) {
@@ -37,6 +37,13 @@ if (!is_dir($clientDir)) {
 }
 
 // -------------------- FUNÇÕES AUXILIARES --------------------
+
+function encodeUrlPath($relativePath)
+{
+    $segments = explode('/', $relativePath);
+    $segments = array_map('rawurlencode', $segments);
+    return implode('/', $segments);
+}
 
 /**
  * Converte caminho absoluto em caminho relativo a partir de $clientDir
@@ -144,9 +151,12 @@ foreach ($iterator as $fileInfo) {
     // $sizeKb = (int) ceil($sizeBytes / 1024);
     // e use $sizeKb em vez de $sizeBytes na estrutura abaixo.
 
+    $urlPath = encodeUrlPath($relativePath);
+
     $entry = [
         'path' => $relativePath,
-        'sha1' => strtoupper($sha1), // seu exemplo usa letras maiúsculas
+        'url'  => $baseUrl . $urlPath,
+        'sha1' => strtoupper($sha1),
         'size' => $sizeBytes,
     ];
 

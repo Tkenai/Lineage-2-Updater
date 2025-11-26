@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import sys
 import urllib.request
 
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -9,15 +10,22 @@ from PyQt5.QtWidgets import QMessageBox
 from app.updater_window import UpdaterWindow, UpdateWorker
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, config_path):
+    def __init__(self, config_path, base_dir):
         super().__init__()
 
         self.config_path = config_path
+        self.base_dir = base_dir            # <-- SEM sobrescrever depois
         self.config = self._load_config()
 
-        self.base_dir = os.path.dirname(os.path.abspath(self.config_path))
-        self.background_path = os.path.join(self.base_dir, "assets", "launcher_bg.png")
+        # >>> NOVO: resolve caminho dos assets dependendo se está congelado ou não
+        if hasattr(sys, "_MEIPASS"):
+            assets_root = os.path.join(sys._MEIPASS, "assets")
+        else:
+            assets_root = os.path.join(self.base_dir, "assets")
 
+        self.background_path = os.path.join(assets_root, "launcher_bg.png")
+        logging.info(f"Background path: {self.background_path}")
+        
         self._dragging = False
         self._drag_pos = QtCore.QPoint()
         self._fade_anim = None
@@ -77,7 +85,11 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         self._manual_thread = QtCore.QThread(self)
-        self._manual_worker = UpdateWorker(mode=mode, config=self.config)
+        self._manual_worker = UpdateWorker(
+            mode=mode,
+            config=self.config,
+            base_dir=self.base_dir,  # <- pasta do EXE
+        )
         self._manual_worker.moveToThread(self._manual_thread)
 
         self._manual_thread.started.connect(self._manual_worker.run)
@@ -533,7 +545,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # cria thread + worker para UPDATE silencioso
             self._auto_thread = QtCore.QThread(self)
-            self._auto_worker = UpdateWorker(mode="update", config=self.config)
+            self._auto_worker = UpdateWorker(
+                mode="update",
+                config=self.config,
+                base_dir=self.base_dir
+            )
             self._auto_worker.moveToThread(self._auto_thread)
 
             # quando a thread começar, roda o worker
@@ -583,36 +599,53 @@ class MainWindow(QtWidgets.QMainWindow):
         self._run_update_silent("fullcheck")
 
     def _on_play_clicked(self):
+        paths = self.config.get("paths", {})
+        game_folder = paths.get("game_folder", ".")
+        exe_rel = paths.get("exe", "")
+
         try:
-            paths = self.config.get("paths", {})
-            game_folder = paths.get("game_folder", "")
-            exe_rel = paths.get("exe", "")
-
-            if not game_folder or not exe_rel:
-                raise RuntimeError("game_folder ou exe não configurados em config.json")
-
-            exe_path = os.path.join(game_folder, exe_rel)
-            exe_path = os.path.normpath(exe_path)
-
-            if not os.path.isfile(exe_path):
-                QMessageBox.critical(
-                    self,
-                    "Erro",
-                    f"Executável do jogo não encontrado:\n{exe_path}",
+            # 1) Valida config
+            if not exe_rel:
+                raise RuntimeError(
+                    "Caminho do executável do jogo (paths.exe) não está configurado em config.json."
                 )
-                return
 
-            logging.info(f"Iniciando jogo: {exe_path}")
-            QtCore.QProcess.startDetached(exe_path, [], os.path.dirname(exe_path))
+            # 2) Resolve pasta raiz do jogo
+            if os.path.isabs(game_folder):
+                root = os.path.normpath(game_folder)
+            else:
+                # sempre relativo à pasta do launcher
+                root = os.path.normpath(os.path.join(self.base_dir, game_folder))
 
+            # 3) Caminho final do executável
+            exe_path = os.path.normpath(os.path.join(root, exe_rel))
+            logging.info(f"Executável esperado do jogo: {exe_path}")
+
+            # 4) Garante que o arquivo existe
+            if not os.path.isfile(exe_path):
+                raise FileNotFoundError(f"Executável do jogo não encontrado:\n{exe_path}")
+
+            # 5) Tenta iniciar o jogo
+            ok = QtCore.QProcess.startDetached(exe_path, [], os.path.dirname(exe_path))
+            if not ok:
+                # startDetached não lançou exceção, mas o Windows recusou iniciar
+                raise RuntimeError(
+                    "O Windows não conseguiu iniciar o executável (QProcess.startDetached retornou False)."
+                )
+
+            logging.info("Processo do jogo iniciado com sucesso.")
             self.showMinimized()
+
         except Exception as e:
             logging.exception("Erro ao iniciar o jogo")
+            err_text = str(e) or repr(e)
             QMessageBox.critical(
                 self,
                 "Erro ao iniciar",
-                f"Não foi possível iniciar o jogo:\n{e}",
+                f"Não foi possível iniciar o jogo:\n\n{err_text}",
             )
+
+
     def _on_log_clicked(self):
         # abre/fecha a janela de log
         if self._log_window is None:

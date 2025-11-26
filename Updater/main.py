@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import logging
 
 from PyQt5.QtWidgets import QApplication, QMessageBox
@@ -9,26 +10,48 @@ from app.windows_privileges import ensure_admin_privileges
 
 LOGGING_ENABLED = True
 
+# ----------------- CONFIG PADRÃO GERADA AUTOMATICAMENTE -----------------
 
-def get_app_dir() -> str:
+DEFAULT_CONFIG = {
+    "paths": {
+        "update_json": "http://192.168.15.57:8080/l2updater/update_json_url.json",
+        "fullcheck_json": "http://192.168.15.57:8080/l2updater/fullcheck.json",
+        # raiz = pasta onde está o EXE
+        "game_folder": ".",
+        "exe": "system-e/l2.exe",
+        "news_url": "http://192.168.15.57:8080/news/launcher_news.html",
+    }
+}
+
+
+def ensure_default_config(config_path: str):
     """
-    Retorna a pasta onde está o executável (no .exe) ou o arquivo main.py (em dev).
-
-    - Quando estiver empacotado com PyInstaller (sys.frozen = True),
-      usamos sys.executable.
-    - Em modo desenvolvimento, usamos o próprio __file__.
+    Se o config.json não existir, cria com DEFAULT_CONFIG.
+    Se existir, não altera nada.
     """
-    if getattr(sys, "frozen", False):
-        # caminho do .exe gerado pelo PyInstaller
-        return os.path.dirname(os.path.abspath(sys.executable))
-    # caminho do main.py quando rodando com "python main.py"
-    return os.path.dirname(os.path.abspath(__file__))
+    if os.path.isfile(config_path):
+        return
+
+    try:
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_CONFIG, f, indent=2, ensure_ascii=False)
+        logging.info(f"config.json não encontrado. Arquivo padrão gerado em: {config_path}")
+    except Exception:
+        logging.exception("Falha ao gerar config.json padrão")
+        QMessageBox.critical(
+            None,
+            "Erro",
+            f"Não foi possível criar o arquivo de configuração:\n{config_path}",
+        )
+        sys.exit(1)
+
+# ------------------------------------------------------------------------
 
 
-def setup_logging(app_dir: str) -> None:
-    logs_dir = os.path.join(app_dir, "logs")
+def setup_logging():
+    logs_dir = os.path.join(os.getcwd(), "logs")
     os.makedirs(logs_dir, exist_ok=True)
-
     log_file_path = os.path.join(logs_dir, "launcher.log")
 
     logging.basicConfig(
@@ -41,22 +64,35 @@ def setup_logging(app_dir: str) -> None:
     )
 
     logging.info("Logging iniciado.")
-    logging.info(f"Diretório da aplicação: {app_dir}")
+
+
+def get_base_path():
+    """
+    Quando empacotado com PyInstaller:
+        - sys.executable = caminho do EXE
+    Em modo desenvolvimento:
+        - usa o caminho do arquivo main.py
+    """
+    if hasattr(sys, "frozen"):
+        return os.path.dirname(sys.executable)
+
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def main():
     # Garante privilégios administrativos no Windows (se possível)
     ensure_admin_privileges()
 
-    app_dir = get_app_dir()
-
     if LOGGING_ENABLED:
-        setup_logging(app_dir)
+        setup_logging()
 
     app = QApplication(sys.argv)
 
-    # config.json fica SEMPRE ao lado do .exe / main.py
-    config_path = os.path.join(app_dir, "config.json")
+    base_path = get_base_path()
+    config_path = os.path.join(base_path, "config.json")
+
+    # 🔹 GARANTE QUE O config.json EXISTA (CRIA SE PRECISAR)
+    ensure_default_config(config_path)
 
     if not os.path.isfile(config_path):
         QMessageBox.critical(
@@ -67,7 +103,7 @@ def main():
         sys.exit(1)
 
     try:
-        window = MainWindow(config_path=config_path)
+        window = MainWindow(config_path=config_path, base_dir=base_path)
     except Exception:
         logging.exception("Falha ao iniciar a janela principal")
         QMessageBox.critical(
