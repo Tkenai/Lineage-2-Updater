@@ -1,0 +1,7 @@
+
+# instalar o pyinstaller
+pip install pyinstaller
+
+# gerar um executavel do launcher
+# e necessario esta na pasta Updater
+pyinstaller --onefile --windowed --icon=icon.ico --name L2Updater --add-data "assets;assets" main.py

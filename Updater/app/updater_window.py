@@ -4,7 +4,7 @@ import hashlib
 import urllib.request
 import logging
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtWidgets, QtGui
 
 
 class UpdateWorker(QtCore.QObject):
@@ -13,13 +13,29 @@ class UpdateWorker(QtCore.QObject):
     log_message = QtCore.pyqtSignal(str)
     finished = QtCore.pyqtSignal(bool)
 
-    def __init__(self, mode, config, parent=None):
+    def __init__(self, mode, config, parent=None,base_dir=None):
         super().__init__(parent)
         self.mode = mode  # "update" ou "fullcheck"
         self.config = config
         self._cancelled = False
+        self.base_dir = base_dir or os.getcwd()
 
     @QtCore.pyqtSlot()
+    def _get_game_root(self):
+        """
+        Pasta raiz onde os arquivos do jogo/patch devem ir.
+        - Se game_folder for absoluto, usa direto
+        - Se for relativo (incluindo "."), é relativo à pasta do launcher (base_dir)
+        """
+        paths = self.config.get("paths", {})
+        game_folder = paths.get("game_folder", ".").strip()
+
+        if os.path.isabs(game_folder):
+            return os.path.normpath(game_folder)
+
+        # relativo -> dentro da pasta do launcher
+        return os.path.normpath(os.path.join(self.base_dir, game_folder))
+
     def run(self):
         try:
             self._run_internal()
@@ -36,7 +52,6 @@ class UpdateWorker(QtCore.QObject):
 
     def _run_internal(self):
         paths = self.config.get("paths", {})
-        game_folder = paths.get("game_folder", "").rstrip("\\/") + os.sep
 
         if self.mode == "update":
             url = paths.get("update_json")
@@ -60,13 +75,17 @@ class UpdateWorker(QtCore.QObject):
             return
 
         total = len(files)
+        game_root = self._get_game_root()  # <- usa base_dir + game_folder
 
         for idx, info in enumerate(files, start=1):
             if self._cancelled:
                 self.log_message.emit("Atualização cancelada.")
                 return
-
+            # caminho relativo vindo do JSON
             rel_path = info["path"].replace("/", os.sep)
+            # remove barras iniciais pra não “escapar” da pasta do launcher
+            rel_path = rel_path.lstrip("\\/")
+
             expected_sha1 = info.get("sha1", "").lower().strip()
             file_url = info.get("url")
 
@@ -74,7 +93,8 @@ class UpdateWorker(QtCore.QObject):
                 # monta URL com base_url
                 file_url = base_url.rstrip("/") + "/" + info["path"].lstrip("/")
 
-            local_path = os.path.join(game_folder, rel_path)
+            # SEMPRE dentro de game_root
+            local_path = os.path.normpath(os.path.join(game_root, rel_path))
 
             msg_prefix = f"[{idx}/{total}] {rel_path}"
             self.status_changed.emit(f"Verificando {msg_prefix}...")

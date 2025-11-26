@@ -1,16 +1,20 @@
-{  
-  "base_url": "http://192.168.15.57:8080/l2updater/client/",  
-  "files": [
-    {
-      "path": "system_en/l2.exe",
-      "sha1": "CF7AC7124BE7F34270EE73C30E321DDB61308B57",
-	  "size" : 3443
-    },
-	{
-      "path": "system_en/l2.ini",
-      "sha1": "61B90013141D22F9A96E61E04369831D5C371CFB",
-	  "size" : 5
-    }
-  ]
+{
+    "base_url": "http://192.168.15.57:8080/l2updater/client/",
+    "files": [
+        {
+            "path": "/system_en/l2.exe",
+            "sha1": "CF7AC7124BE7F34270EE73C30E321DDB61308B57",
+            "size": 3515096
+        },
+        {
+            "path": "/system_en/l2.ini",
+            "sha1": "61B90013141D22F9A96E61E04369831D5C371CFB",
+            "size": 4400
+        },
+        {
+            "path": "/teste.json",
+            "sha1": "E934072C8D32650EFB8495BB4ABA355D6DDFCBD6",
+            "size": 5
+        }
+    ]
 }
-
